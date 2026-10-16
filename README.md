@@ -1,59 +1,30 @@
+# Network Port Scan Detector
 
-# network port scan detector
+A small Python project that looks through simulated network connection logs and flags IP addresses that look like they're port scanning.
 
-## about the project
+A port scan is when one machine quickly tries lots of different ports on a target to see which ones are open. Normal traffic usually touches only a few ports, so a burst of many different ones from the same IP stands out.
 
-This project detects potentially suspicious network activity by analyzing simulated network connection data.
+## How it works
 
-It groups connections by source ip address and time window, counts unique destination ports, and flags activity that reaches the detection threshold.
+Each record in the data has a source IP, a destination port and a timestamp in seconds. The script splits time into 5-minute windows and, for each IP in each window, counts how many different ports it contacted. If that count reaches 10 or more, the IP is marked as suspicious. Otherwise it's marked normal.
 
-## how it works
+It then prints a report with alerts and a few stats, and saves a bar chart of the results. It uses NumPy, pandas and Matplotlib.
 
-- stores simulated network connection records
-- groups connections by source ip and 5-minute time window
-- removes duplicate destination ports
-- flags an ip when it accesses 10 or more unique ports in a window
-- displays a report and security alerts
-- calculates network statistics using numpy
-- uses pandas to organize and analyze the data
-- creates a graph using matplotlib
+## Sample output
 
-## detection rule
+![Port scan chart](scan_chart.png)
 
-- time window: 300 seconds (5 minutes)
-- detection threshold: 10 unique destination ports
-- fewer than 10 unique ports: normal
-- 10 or more unique ports: suspicious
+Red bars are flagged IPs, and the dashed line is the threshold of 10 ports.
 
-## technologies used
-
-- python
-- numpy
-- pandas
-- matplotlib
-
-## installation
-
-install the required libraries:
+## Running it
 
 ```bash
 pip install -r requirements.txt
-```
-
-## run the project
-
-```bash
 python port_scan_detector.py
 ```
 
-## limitations
+## Limitations
 
-This project uses simulated network data and a simple rule-based detection method. It does not capture live network traffic, and a suspicious alert does not prove malicious activity.
-
-## learning objectives
-
-- python data structures and loops
-- duplicate removal using sets
-- data analysis with numpy and pandas
-- data visualization with matplotlib
-- basic network security concepts
+- The data is simulated. The script doesn't read real network traffic, and an alert doesn't prove anything malicious is going on.
+- The windows are fixed, so a scan that straddles two windows can slip through. For example, 5 ports just before second 300 and 5 more just after would never hit 10 in either window.
+- A single fixed threshold can flag busy but legitimate machines, and it can miss slow scans that spread out over a long time.
