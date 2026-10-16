@@ -1,16 +1,21 @@
-
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+
+
+# ---- detection settings ----
+
+THRESHOLD = 10      # 10 or more unique ports in one window is flagged as suspicious
+WINDOW_SIZE = 300   # 300 seconds = 5 minutes
 
 
 # ---- network connection data ----
 
 connections = [
     # computer a
-    {"source_ip": "192.168.1.5", "dest_port": 80, "second": 100},  # port 80 is for http i.e web traffic
-    {"source_ip": "192.168.1.5", "dest_port": 443, "second": 120},  # port 443 is for https i.e secure web traffic
-    {"source_ip": "192.168.1.5", "dest_port": 22, "second": 150},  # port 22 is for ssh traffic
+    {"source_ip": "192.168.1.5", "dest_port": 80, "second": 100},   # port 80: http (web traffic)
+    {"source_ip": "192.168.1.5", "dest_port": 443, "second": 120},  # port 443: https (secure web traffic)
+    {"source_ip": "192.168.1.5", "dest_port": 22, "second": 150},   # port 22: ssh
 
     # computer b
     {"source_ip": "10.0.0.99", "dest_port": 21, "second": 110},
@@ -26,126 +31,108 @@ connections = [
     {"source_ip": "10.0.0.50", "dest_port": 80, "second": 230},
     {"source_ip": "10.0.0.50", "dest_port": 110, "second": 235},
     {"source_ip": "10.0.0.50", "dest_port": 143, "second": 240},
-    {"source_ip": "10.0.0.50", "dest_port": 443, "second": 245}
+    {"source_ip": "10.0.0.50", "dest_port": 443, "second": 245},
 ]
 
 
-# ---- detection limit / time window ----
+def group_ports(connections, window_size):
+    """Collect the unique destination ports for each (ip, time window) pair."""
+    port_groups = {}
 
-threshold = 10  # limitation of 10 unique ports after that flagged as suspicious
-window_size = 300  # 300 seconds means 5 minutes
+    for connection in connections:
+        ip = connection["source_ip"]
+        port = connection["dest_port"]
+        window = connection["second"] // window_size
+        group = (ip, window)
 
+        if group not in port_groups:
+            port_groups[group] = set()
 
-# ---- grouping ports by ip address and time window ----
+        port_groups[group].add(port)  # a set removes duplicate ports
 
-port_groups = {}
-
-for connection in connections:
-    ip = connection["source_ip"]
-    port = connection["dest_port"]
-    second = connection["second"]
-
-    # ---- finding the 5-minute time window ----
-    window = second // window_size
-    group = (ip, window)
-
-    if group not in port_groups:
-        port_groups[group] = set()
-
-    # ---- removing duplicate ports ----
-    port_groups[group].add(port)
+    return port_groups
 
 
-# ---- detecting suspicious activity ----
+def detect_suspicious(port_groups, threshold):
+    """Label each group as suspicious or normal and return a DataFrame."""
+    results = []
 
-results = []
+    for (ip, window), unique_ports in port_groups.items():
+        total_ports = len(unique_ports)
+        status = "suspicious" if total_ports >= threshold else "normal"
 
-for group, unique_ports in port_groups.items():
-    ip, window = group
-    total_ports = len(unique_ports)
+        results.append({
+            "source_ip": ip,
+            "window": window,
+            "unique_port_count": total_ports,
+            "status": status,
+        })
 
-    if total_ports >= threshold:
-        status = "suspicious"
+    return pd.DataFrame(results)
+
+
+def print_report(df, total_connections):
+    """Print the full report, security alerts and statistics."""
+    print("\n===== network port scan report =====")
+    print(df.to_string(index=False))
+
+    alerts = df[df["status"] == "suspicious"]
+
+    print("\n===== security alerts =====")
+    if alerts.empty:
+        print("no suspicious activity detected.")
     else:
-        status = "normal"
+        for _, alert in alerts.iterrows():
+            print(
+                "suspicious activity detected from ip:", alert["source_ip"],
+                "| unique ports:", alert["unique_port_count"],
+                "| time window:", alert["window"],
+            )
 
-    results.append({
-        "source_ip": ip,
-        "window": window,
-        "unique_port_count": total_ports,
-        "status": status
-    })
+    port_counts = df["unique_port_count"].to_numpy()
 
-
-# ---- displaying the results using pandas ----
-
-df = pd.DataFrame(results)
-
-print("\n===== network port scan report =====")
-print(df.to_string(index=False))
+    print("\n===== network statistics =====")
+    print("total connection records:", total_connections)
+    print("total ip and time-window groups:", len(df))
+    print("average unique ports:", round(np.mean(port_counts), 2))
+    print("maximum unique ports:", np.max(port_counts))
 
 
-# ---- showing security alerts ----
+def plot_results(df, threshold, save_path="scan_chart.png"):
+    """Draw a bar chart of unique ports per group, save it, and show it."""
+    labels = df["source_ip"] + "\nwindow " + df["window"].astype(str)
 
-alerts = df[df["status"] == "suspicious"]
+    bar_colors = [
+        "tomato" if status == "suspicious" else "steelblue"
+        for status in df["status"]
+    ]
 
-print("\n===== security alerts =====")
+    plt.figure(figsize=(10, 6))
+    plt.bar(labels, df["unique_port_count"], color=bar_colors)
 
-if alerts.empty:
-    print("no suspicious activity detected.")
-else:
-    for _, alert in alerts.iterrows():
-        print(
-            "suspicious activity detected from ip:",
-            alert["source_ip"],
-            "| unique ports:",
-            alert["unique_port_count"],
-            "| time window:",
-            alert["window"]
-        )
+    plt.axhline(
+        y=threshold,
+        linestyle="--",
+        color="black",
+        label=f"detection threshold ({threshold})",
+    )
 
+    plt.title("network port scan detection")
+    plt.xlabel("source ip and time window")
+    plt.ylabel("total unique destination ports")
+    plt.legend()
+    plt.tight_layout()
 
-# ---- numpy statistics ----
-
-port_counts = df["unique_port_count"].to_numpy()
-
-print("\n===== network statistics =====")
-print("total connection records:", len(connections))
-print("total ip and time-window groups:", len(df))
-print("average unique ports:", round(np.mean(port_counts), 2))
-print("maximum unique ports:", np.max(port_counts))
+    plt.savefig(save_path)  # save before show(), otherwise the image can be blank
+    plt.show()
 
 
-# ---- graph: port scan detection ----
+def main():
+    port_groups = group_ports(connections, WINDOW_SIZE)
+    df = detect_suspicious(port_groups, THRESHOLD)
+    print_report(df, len(connections))
+    plot_results(df, THRESHOLD)
 
-labels = (
-    df["source_ip"]
-    + "\nwindow "
-    + df["window"].astype(str)
-)
 
-# ---- setting graph colors based on activity ----
-bar_colors = [
-    "tomato" if status == "suspicious" else "steelblue"
-    for status in df["status"]
-]
-
-plt.figure(figsize=(10, 6))
-
-plt.bar(labels, df["unique_port_count"], color=bar_colors)
-
-# ---- dotted line showing the detection threshold ----
-plt.axhline(
-    y=threshold,
-    linestyle="--",
-    color="black",
-    label=f"detection threshold ({threshold})"
-)
-
-plt.title("network port scan detection")
-plt.xlabel("source ip and time window")
-plt.ylabel("total unique destination ports")
-plt.legend()
-
-plt.tight_layout()
-plt.show()
+if __name__ == "__main__":
+    main()
