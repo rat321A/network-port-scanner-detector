@@ -1,3 +1,6 @@
+
+import os
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -7,6 +10,8 @@ import matplotlib.pyplot as plt
 
 THRESHOLD = 10      # 10 or more unique ports in one window is flagged as suspicious
 WINDOW_SIZE = 300   # 300 seconds = 5 minutes
+IMAGE_DIR = "images"
+SHOW_PLOTS = True   # set to False to only save the images
 
 
 # ---- network connection data ----
@@ -98,8 +103,20 @@ def print_report(df, total_connections):
     print("maximum unique ports:", np.max(port_counts))
 
 
-def plot_results(df, threshold, save_path="scan_chart.png"):
-    """Draw a bar chart of unique ports per group, save it, and show it."""
+def finish_plot(filename):
+    """Tidy the layout, save the figure into the images folder, then show or close it."""
+    os.makedirs(IMAGE_DIR, exist_ok=True)
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(IMAGE_DIR, filename), dpi=150)  # save before show()
+
+    if SHOW_PLOTS:
+        plt.show()
+    plt.close()
+
+
+def plot_results(df, threshold):
+    """Bar chart of unique ports per (ip, window) group with the threshold line."""
     labels = df["source_ip"] + "\nwindow " + df["window"].astype(str)
 
     bar_colors = [
@@ -121,17 +138,54 @@ def plot_results(df, threshold, save_path="scan_chart.png"):
     plt.xlabel("source ip and time window")
     plt.ylabel("total unique destination ports")
     plt.legend()
-    plt.tight_layout()
 
-    plt.savefig(save_path)  # save before show(), otherwise the image can be blank
-    plt.show()
+    finish_plot("scan_chart.png")
+
+
+def plot_timeline(connections, window_size):
+    """Scatter plot of destination port over time, one color per source ip."""
+    df = pd.DataFrame(connections)
+
+    plt.figure(figsize=(10, 6))
+
+    for ip, group in df.groupby("source_ip"):
+        plt.scatter(group["second"], group["dest_port"], label=ip, s=60)
+
+    # dotted vertical lines mark where each time window starts
+    for boundary in range(0, int(df["second"].max()) + window_size, window_size):
+        plt.axvline(boundary, linestyle=":", color="gray")
+
+    plt.title("connection timeline by source ip")
+    plt.xlabel("time (seconds)")
+    plt.ylabel("destination port")
+    plt.legend(title="source ip")
+
+    finish_plot("port_timeline.png")
+
+
+def plot_connections_per_ip(connections):
+    """Bar chart of how many connections each source ip made in total."""
+    df = pd.DataFrame(connections)
+    counts = df["source_ip"].value_counts()
+
+    plt.figure(figsize=(8, 5))
+    plt.bar(counts.index, counts.values, color="steelblue")
+
+    plt.title("total connections per source ip")
+    plt.xlabel("source ip")
+    plt.ylabel("number of connections")
+
+    finish_plot("connections_per_ip.png")
 
 
 def main():
     port_groups = group_ports(connections, WINDOW_SIZE)
     df = detect_suspicious(port_groups, THRESHOLD)
     print_report(df, len(connections))
+
     plot_results(df, THRESHOLD)
+    plot_timeline(connections, WINDOW_SIZE)
+    plot_connections_per_ip(connections)
 
 
 if __name__ == "__main__":

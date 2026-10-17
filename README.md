@@ -26,5 +26,5 @@ python port_scan_detector.py
 ## Limitations
 
 - The data is simulated. The script doesn't read real network traffic, and an alert doesn't prove anything malicious is going on.
-- The windows are fixed, so a scan that straddles two windows can slip through. For example, 5 ports just before second 300 and 5 more just after would never hit 10 in either window.
+- The windows are fixed, so a scan that crosses two windows can slip through. For example, 5 ports just before second 300 and 5 more just after would never hit 10 in either window.
 - A single fixed threshold can flag busy but legitimate machines, and it can miss slow scans that spread out over a long time.
